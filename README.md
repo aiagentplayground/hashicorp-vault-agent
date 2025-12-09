@@ -414,7 +414,6 @@ Agent:
 4. Confirms success to user
 
 ## Security Notes
-
 - Never output actual secret values to the user
 - Always confirm before performing rotation
 - Suggest updating dependent applications after rotation
