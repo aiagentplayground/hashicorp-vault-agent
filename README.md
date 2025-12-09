@@ -1,6 +1,6 @@
 # HashiCorp Vault MCP Server and Agents with kagent
 
-This guide explains how to deploy the HashiCorp Vault MCP Server on Kubernetes using kmcp, create AI agents that interact with Vault, and extend them with container-based skills.
+This guide explains how to deploy the HashiCorp Vault MCP Server on Kubernetes using kmcp and create AI agents that interact with Vault for secret management, policy generation guidance, and PKI operations.
 
 ## Table of Contents
 
@@ -8,7 +8,7 @@ This guide explains how to deploy the HashiCorp Vault MCP Server on Kubernetes u
 - [Prerequisites](#prerequisites)
 - [Part 1: Deploy the Vault MCP Server](#part-1-deploy-the-vault-mcp-server)
 - [Part 2: Deploy Vault Agents](#part-2-deploy-vault-agents)
-- [Part 3: Add Container-Based Skills](#part-3-add-container-based-skills)
+- [Part 3: Advanced Agent Capabilities](#part-3-advanced-agent-capabilities)
 - [Part 4: Testing the Agents](#part-4-testing-the-agents)
 - [Troubleshooting](#troubleshooting)
 
@@ -24,24 +24,24 @@ This setup consists of the following components:
 
 3. **Vault List Agent** - A read-only agent that can only list mounts and secrets (no write or delete operations).
 
-4. **Container-Based Skills** - Reusable skill containers that extend agent capabilities with specialized workflows.
+4. **Enhanced Expert Agent** - An expert agent with detailed system instructions for guided secret rotation and policy generation workflows.
 
 ### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        kagent Agent                              │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │   Skills    │  │    Tools    │  │     System Message      │  │
-│  │ (Container) │  │ (MCP Server)│  │    (Instructions)       │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
+│  ┌─────────────────────────┐  ┌─────────────────────────────┐   │
+│  │         Tools           │  │      System Message         │   │
+│  │     (MCP Server)        │  │     (Instructions)          │   │
+│  └─────────────────────────┘  └─────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
-         │                  │
-         ▼                  ▼
-┌─────────────────┐  ┌──────────────────┐     ┌─────────────────┐
-│  Skill Scripts  │  │  Vault MCP       │────▶│  HashiCorp      │
-│  & Resources    │  │  Server          │     │  Vault          │
-└─────────────────┘  └──────────────────┘     └─────────────────┘
+                │
+                ▼
+       ┌──────────────────┐     ┌─────────────────┐
+       │  Vault MCP       │────▶│  HashiCorp      │
+       │  Server          │     │  Vault          │
+       └──────────────────┘     └─────────────────┘
 ```
 
 ---
@@ -52,7 +52,6 @@ Before you begin, ensure you have:
 
 - A Kubernetes cluster (kind, minikube, EKS, GKE, etc.)
 - `kubectl` configured to access your cluster
-- Docker installed (for building skill containers)
 - kagent installed in your cluster ([Quick Start Guide](https://kagent.dev/docs/kagent/getting-started/quickstart))
 - kmcp controller installed ([kmcp Installation](https://kagent.dev/docs/kmcp/deploy/install-controller))
 - A running HashiCorp Vault instance with:
@@ -235,58 +234,6 @@ spec:
             - vault_pki_role_list
             - vault_pki_role_delete
             - vault_pki_issue
-    a2aConfig:
-      skills:
-        - id: secrets-management-skill
-          name: Secrets Management
-          description: Create, read, update, and delete secrets in HashiCorp Vault KV mounts
-          inputModes:
-            - text
-          outputModes:
-            - text
-          tags:
-            - vault
-            - secrets
-            - kv
-            - security
-          examples:
-            - "Store my database password securely in Vault"
-            - "Read the API key from secret/myapp/config"
-            - "List all secrets under the apps/ path"
-            - "Delete the old secret at secret/legacy/credentials"
-            - "Create a new KV mount called 'team-secrets'"
-        - id: mount-management-skill
-          name: Mount Management
-          description: Create, list, and manage secret mounts in Vault
-          inputModes:
-            - text
-          outputModes:
-            - text
-          tags:
-            - vault
-            - mounts
-            - configuration
-          examples:
-            - "List all mounts in Vault"
-            - "Create a new KV v2 mount named 'production-secrets'"
-            - "Delete the unused mount at 'old-secrets/'"
-        - id: pki-management-skill
-          name: PKI Certificate Management
-          description: Manage PKI secrets engine, roles, and issue certificates
-          inputModes:
-            - text
-          outputModes:
-            - text
-          tags:
-            - vault
-            - pki
-            - certificates
-            - tls
-          examples:
-            - "Enable and configure a PKI secrets engine"
-            - "Create a PKI role for issuing certificates"
-            - "Issue a certificate for my-service.example.com"
-            - "List all PKI roles in the pki/ mount"
 EOF
 ```
 
@@ -325,24 +272,6 @@ spec:
           toolNames:
             - vault_mount_list
             - vault_kv_list
-    a2aConfig:
-      skills:
-        - id: list-vault-resources
-          name: List Vault Resources
-          description: List mounts and secrets in HashiCorp Vault
-          inputModes:
-            - text
-          outputModes:
-            - text
-          tags:
-            - vault
-            - list
-            - secrets
-          examples:
-            - "List all mounts in Vault"
-            - "List all secrets under the apps/ path"
-            - "Show me what's in the secret/data/myapp path"
-            - "What secret engines are enabled?"
 EOF
 ```
 
@@ -359,338 +288,17 @@ kubectl get agent vault-list-agent -n kagent -o yaml
 
 ---
 
-## Part 3: Add Container-Based Skills
+## Part 3: Advanced Agent Capabilities
 
-Skills are descriptions of capabilities that help agents act more autonomously. They guide the agent's tool usage and planning by orienting responses toward goals rather than just reacting to prompts.
+The most effective way to give agents advanced capabilities is through detailed instructions in the system message. The agent uses its MCP tools (vault_kv_read, vault_kv_write, etc.) to execute workflow steps based on these instructions.
 
-### Step 1: Create a Vault Secret Rotation Skill
+This section shows how to create an enhanced agent with guided workflows for:
+- **Secret rotation** with confirmation and verification
+- **Policy generation** with best practices guidance
 
-This skill helps automate secret rotation workflows.
+### Enhanced Expert Agent
 
-1. Create the skill directory:
-
-```bash
-mkdir vault-rotation-skill
-cd vault-rotation-skill
-```
-
-2. Create the `SKILL.md` file:
-
-```bash
-cat > SKILL.md <<'EOF'
----
-name: vault-secret-rotation
-description: Automate secret rotation workflows in HashiCorp Vault
----
-
-# Vault Secret Rotation Skill
-
-Use this skill when users want to rotate secrets in HashiCorp Vault following best practices.
-
-## Instructions
-
-- Expect the user to provide the secret path they wish to rotate
-- Optionally they may supply a new value, but if not provided, generate a secure random value
-- The script `scripts/rotate-secret.py` handles the rotation workflow
-
-## Workflow
-
-1. Read the current secret (for backup/audit purposes)
-2. Generate or use provided new secret value
-3. Write the new secret to Vault
-4. Verify the rotation was successful
-5. Output a summary (without exposing the actual secret values)
-
-## Example
-
-User: Rotate the database password at secret/myapp/database
-
-Agent: 
-1. Reads current secret metadata
-2. Invokes `scripts/rotate-secret.py secret/myapp/database password`
-3. Applies the rotation
-4. Confirms success to user
-
-## Security Notes
-
-- Never output actual secret values to the user
-- Always confirm before performing rotation
-- Suggest updating dependent applications after rotation
-EOF
-```
-
-3. Create the rotation script:
-
-```bash
-mkdir scripts
-cat > scripts/rotate-secret.py <<'EOF'
-#!/usr/bin/env python3
-"""
-Vault Secret Rotation Helper Script
-Generates rotation commands and validates inputs
-"""
-
-import sys
-import secrets
-import string
-import json
-from datetime import datetime
-
-def generate_secure_password(length=32):
-    """Generate a cryptographically secure password"""
-    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-    return ''.join(secrets.choice(alphabet) for _ in range(length))
-
-def generate_rotation_plan(secret_path, key_name, new_value=None):
-    """Generate a rotation plan for the agent to execute"""
-    
-    if new_value is None:
-        new_value = generate_secure_password()
-    
-    plan = {
-        "timestamp": datetime.utcnow().isoformat(),
-        "secret_path": secret_path,
-        "key_to_rotate": key_name,
-        "steps": [
-            f"1. Read current secret at {secret_path} for audit log",
-            f"2. Update key '{key_name}' with new value",
-            f"3. Verify secret was updated successfully",
-            f"4. Recommend updating dependent applications"
-        ],
-        "vault_write_command": f"vault kv put {secret_path} {key_name}=<new_value>",
-        "new_value_generated": new_value is not None
-    }
-    
-    # Write plan to file for agent to read
-    with open("rotation-plan.json", "w") as f:
-        json.dump(plan, f, indent=2)
-    
-    print(f"Rotation plan generated for: {secret_path}")
-    print(f"Key to rotate: {key_name}")
-    print(f"Plan saved to: rotation-plan.json")
-    print("\nThe agent should now execute the rotation using Vault tools.")
-    
-    return plan
-
-def print_usage():
-    print("""Vault Secret Rotation Helper
-
-Usage:
-    python rotate-secret.py <secret_path> <key_name> [new_value]
-
-Examples:
-    python rotate-secret.py secret/myapp/db password
-    python rotate-secret.py secret/api/keys api_key "custom-value-123"
-
-This script generates a rotation plan that the agent will execute.
-""")
-
-if __name__ == "__main__":
-    args = sys.argv[1:]
-    
-    if not args or "-h" in args or "--help" in args:
-        print_usage()
-        sys.exit(0)
-    
-    if len(args) < 2:
-        print("Error: Need <secret_path> <key_name>")
-        print_usage()
-        sys.exit(1)
-    
-    secret_path = args[0]
-    key_name = args[1]
-    new_value = args[2] if len(args) > 2 else None
-    
-    generate_rotation_plan(secret_path, key_name, new_value)
-EOF
-
-chmod +x scripts/rotate-secret.py
-```
-
-4. Create the Dockerfile:
-
-```bash
-cat > Dockerfile <<'EOF'
-FROM scratch
-COPY . /
-EOF
-```
-
-5. Build and push the skill container:
-
-```bash
-# Start local registry if not running
-docker ps | grep registry || docker run -d -p 5000:5000 --restart=always --name local-registry registry:2
-
-# Build and push
-docker build -t localhost:5000/vault-rotation-skill:latest .
-docker push localhost:5000/vault-rotation-skill:latest
-
-# Go back to parent directory
-cd ..
-```
-
-### Step 2: Create a Vault Policy Generator Skill
-
-This skill helps generate Vault ACL policies.
-
-1. Create the skill directory:
-
-```bash
-mkdir -p vault-policy-skill/scripts
-cd vault-policy-skill
-```
-
-2. Create the `SKILL.md` file:
-
-```bash
-cat > SKILL.md <<'EOF'
----
-name: vault-policy-generator
-description: Generate HashiCorp Vault ACL policies based on requirements
----
-
-# Vault Policy Generator Skill
-
-Use this skill when users want to create Vault ACL policies.
-
-## Instructions
-
-- Expect the user to describe what access they need
-- Use the script `scripts/generate-policy.py` to create policy HCL
-- The script outputs a valid Vault policy file
-
-## Parameters
-
-- `policy_name`: Name for the policy
-- `paths`: Comma-separated list of paths to grant access to
-- `capabilities`: Comma-separated capabilities (read, write, list, delete, sudo)
-
-## Example
-
-User: Create a read-only policy for the apps/ secrets path
-
-Agent: Invokes `scripts/generate-policy.py apps-readonly secret/data/apps/* read,list`
-
-The skill generates a `policy.hcl` file that can be applied to Vault.
-
-## Output
-
-Apply the generated policy with:
-
-\`\`\`bash
-vault policy write <policy_name> policy.hcl
-\`\`\`
-EOF
-```
-
-3. Create the policy generator script:
-
-```bash
-cat > scripts/generate-policy.py <<'EOF'
-#!/usr/bin/env python3
-"""
-Vault Policy Generator
-Creates HCL policy files based on requirements
-"""
-
-import sys
-from pathlib import Path
-
-def generate_policy(policy_name, paths, capabilities):
-    """Generate a Vault ACL policy in HCL format"""
-    
-    policy_blocks = []
-    
-    for path in paths:
-        caps = ', '.join(f'"{c.strip()}"' for c in capabilities)
-        block = f'''path "{path}" {{
-  capabilities = [{caps}]
-}}'''
-        policy_blocks.append(block)
-    
-    policy_content = f'''# Vault ACL Policy: {policy_name}
-# Generated by vault-policy-skill
-# 
-# Apply with: vault policy write {policy_name} policy.hcl
-
-{chr(10).join(policy_blocks)}
-'''
-    
-    # Write policy to file
-    policy_file = Path("policy.hcl")
-    policy_file.write_text(policy_content)
-    
-    print(f"Policy '{policy_name}' generated successfully!")
-    print(f"Output file: policy.hcl")
-    print(f"\nPolicy content:")
-    print("-" * 40)
-    print(policy_content)
-    print("-" * 40)
-    print(f"\nTo apply: vault policy write {policy_name} policy.hcl")
-    
-    return policy_content
-
-def print_usage():
-    print("""Vault Policy Generator
-
-Usage:
-    python generate-policy.py <policy_name> <paths> <capabilities>
-
-Arguments:
-    policy_name  - Name for the policy
-    paths        - Comma-separated secret paths (supports wildcards)
-    capabilities - Comma-separated capabilities
-
-Capabilities:
-    read, write, list, delete, sudo, create, update, patch
-
-Examples:
-    python generate-policy.py app-readonly "secret/data/apps/*" "read,list"
-    python generate-policy.py admin "secret/*,auth/*" "read,write,list,delete"
-""")
-
-if __name__ == "__main__":
-    args = sys.argv[1:]
-    
-    if not args or "-h" in args or "--help" in args:
-        print_usage()
-        sys.exit(0)
-    
-    if len(args) < 3:
-        print("Error: Need <policy_name> <paths> <capabilities>")
-        print_usage()
-        sys.exit(1)
-    
-    policy_name = args[0]
-    paths = [p.strip() for p in args[1].split(",")]
-    capabilities = [c.strip() for c in args[2].split(",")]
-    
-    generate_policy(policy_name, paths, capabilities)
-EOF
-
-chmod +x scripts/generate-policy.py
-```
-
-4. Create the Dockerfile and build:
-
-```bash
-cat > Dockerfile <<'EOF'
-FROM scratch
-COPY . /
-EOF
-
-# Build and push
-docker build -t localhost:5000/vault-policy-skill:latest .
-docker push localhost:5000/vault-policy-skill:latest
-
-# Go back to parent directory
-cd ..
-```
-
-### Step 3: Deploy Agent with Skills
-
-Update the Vault Expert Agent to include the container-based skills:
+Deploy an agent with detailed instructions for rotation and policy generation:
 
 ```bash
 kubectl apply -f - <<EOF
@@ -700,45 +308,105 @@ metadata:
   name: vault-expert-agent-with-skills
   namespace: kagent
 spec:
-  description: A HashiCorp Vault expert agent with advanced skills for secret rotation and policy management.
+  description: A HashiCorp Vault expert agent with advanced capabilities for secret rotation and policy management.
   type: Declarative
-  skills:
-    insecureSkipVerify: true
-    refs:
-      - kind-registry:5000/vault-rotation-skill:latest
-      - kind-registry:5000/vault-policy-skill:latest
   declarative:
     modelConfig: default-model-config
     systemMessage: |-
-      You are an expert HashiCorp Vault agent with advanced skills for managing secrets, policies, and automation workflows.
+      You are an expert HashiCorp Vault agent with advanced capabilities for managing secrets, policies, and automation workflows.
       
       # Capabilities
       You can help users with:
       - Creating, listing, and deleting secret mounts (KV v1, KV v2)
       - Reading, writing, listing, and deleting secrets in KV mounts
       - Managing PKI secrets engine
-      - **Rotating secrets** using the vault-secret-rotation skill
-      - **Generating ACL policies** using the vault-policy-generator skill
+      - **Rotating secrets** following secure rotation procedures
+      - **Generating ACL policies** based on requirements
       
-      # Skills Available
-      You have access to container-based skills that provide specialized workflows:
-      1. **vault-secret-rotation**: Automate secret rotation with best practices
-      2. **vault-policy-generator**: Generate Vault ACL policies from requirements
+      # Secret Rotation Procedure
+      When asked to rotate a secret:
+      1. **Read Current Secret**: Use vault_kv_read to get current values
+      2. **Generate New Credentials**: 
+         - For passwords: Generate 32+ chars with uppercase, lowercase, numbers, symbols
+         - For API keys: Suggest format like "key_" followed by 32+ random alphanumeric chars
+      3. **Show Rotation Plan**: Display a plan showing:
+         - Path being rotated
+         - Keys being updated
+         - Preview of old value (first 4 chars + ****)
+         - Preview of new value (first 4 chars + ****)
+      4. **Request Confirmation**: Ask user to confirm before proceeding
+      5. **Execute Rotation**: Use vault_kv_write to store new values
+      6. **Verify**: Read back the secret to confirm success
+      
+      # Policy Generation Guidelines
+      When asked to create a Vault policy:
+      1. **Gather Requirements**:
+         - What paths need access?
+         - What capabilities are needed? (create, read, update, delete, list, sudo, deny)
+         - What's the intended use case?
+      2. **Generate HCL Policy**: Format the policy in proper HCL:
+         ```
+         # Policy: <policy-name>
+         path "<path>" {
+           capabilities = ["<cap1>", "<cap2>"]
+         }
+         ```
+      3. **Explain Each Rule**: Describe what each path/capability allows
+      4. **Recommend Least Privilege**: Suggest the minimum permissions needed
+      
+      # Valid Capabilities
+      - create: Create new data
+      - read: Read existing data
+      - update: Update existing data
+      - delete: Delete data
+      - list: List keys/paths (does NOT allow reading values)
+      - sudo: Perform privileged operations
+      - deny: Explicitly deny access
+      
+      # Common Policy Patterns
+      ## Read-Only Access
+      ```
+      path "secret/data/myapp/*" {
+        capabilities = ["read", "list"]
+      }
+      path "secret/metadata/myapp/*" {
+        capabilities = ["list"]
+      }
+      ```
+      
+      ## Application Full Access
+      ```
+      path "secret/data/myapp/*" {
+        capabilities = ["create", "read", "update", "delete", "list"]
+      }
+      ```
+      
+      ## CI/CD Pipeline
+      ```
+      path "secret/data/ci/*" {
+        capabilities = ["read", "list"]
+      }
+      path "auth/token/create" {
+        capabilities = ["update"]
+      }
+      ```
       
       # Instructions
-      - Check your skills using the SkillsTool when asked about capabilities
-      - Use skills for complex workflows (rotation, policy generation)
       - Use MCP tools for direct Vault operations
       - Always explain what you're doing before executing
       - Confirm destructive operations with the user
+      - For rotation, ALWAYS show a plan and get confirmation first
+      - For policies, explain the security implications
       
       # Security Best Practices
-      - Never expose secret values in outputs
+      - Never expose full secret values in outputs (show first 4 chars only)
       - Recommend least-privilege access patterns
-      - Suggest secret rotation schedules
+      - Suggest secret rotation schedules (90 days for passwords, 30 days for API keys)
+      - Warn about overly permissive policies
       
       # Response format
       - ALWAYS format your response as Markdown
+      - Use code blocks for policies and commands
       - Include summaries of actions and results
     tools:
       - type: McpServer
@@ -759,54 +427,8 @@ spec:
             - vault_pki_role_list
             - vault_pki_role_delete
             - vault_pki_issue
-    a2aConfig:
-      skills:
-        - id: secrets-management
-          name: Secrets Management
-          description: Full lifecycle management of secrets in Vault
-          inputModes:
-            - text
-          outputModes:
-            - text
-          tags:
-            - vault
-            - secrets
-          examples:
-            - "Store a new database credential"
-            - "Rotate the API key for my application"
-            - "List all secrets in the production path"
-        - id: policy-management
-          name: Policy Management
-          description: Create and manage Vault ACL policies
-          inputModes:
-            - text
-          outputModes:
-            - text
-          tags:
-            - vault
-            - policies
-            - acl
-          examples:
-            - "Create a read-only policy for the dev team"
-            - "Generate an admin policy for the platform team"
-        - id: secret-rotation
-          name: Secret Rotation
-          description: Automated secret rotation workflows
-          inputModes:
-            - text
-          outputModes:
-            - text
-          tags:
-            - vault
-            - rotation
-            - automation
-          examples:
-            - "Rotate the database password"
-            - "Set up rotation for API keys"
 EOF
 ```
-
-> **Note**: For Kind clusters, use `kind-registry:5000` instead of `localhost:5000`. For other registries (Docker Hub, GHCR, ECR), update the image references accordingly.
 
 ---
 
@@ -829,34 +451,9 @@ kagent invoke --agent vault-expert-agent --task "List all mounts in Vault"
 # Test the list agent
 kagent invoke --agent vault-list-agent --task "Show me all secret engines"
 
-# Test skills
-kagent invoke --agent vault-expert-agent-with-skills --task "What skills do you have?"
+# Test the enhanced agent's capabilities
 kagent invoke --agent vault-expert-agent-with-skills --task "Generate a read-only policy for secret/apps/*"
-kagent invoke --agent vault-expert-agent-with-skills --task "Rotate the password at secret/myapp/database"
-```
-
-### Option 3: Using the A2A Protocol
-
-```bash
-# Port-forward the kagent controller
-kubectl port-forward svc/kagent-controller 8083:8083 -n kagent
-
-# Get the agent card
-curl localhost:8083/api/a2a/kagent/vault-expert-agent/.well-known/agent.json | jq
-
-# Get the skilled agent card
-curl localhost:8083/api/a2a/kagent/vault-expert-agent-with-skills/.well-known/agent.json | jq
-```
-
-### Option 4: Using the A2A Host CLI
-
-```bash
-# Clone the A2A samples repository
-git clone https://github.com/a2aproject/a2a-samples.git
-cd a2a-samples/samples/python/hosts/cli
-
-# Connect to the vault expert agent with skills
-uv run . --agent http://127.0.0.1:8083/api/a2a/kagent/vault-expert-agent-with-skills
+kagent invoke --agent vault-expert-agent-with-skills --task "Help me rotate the password at secret/myapp/database"
 ```
 
 ---
@@ -892,17 +489,28 @@ tools:
       kind: MCPServer
 ```
 
-### Skills Not Loading
+### Skills/A2A Config Errors
 
-```bash
-# Check if skill images are accessible
-docker pull localhost:5000/vault-rotation-skill:latest
+If you see errors about unknown fields like `spec.skills`, `spec.a2aConfig`, or `spec.declarative.a2aConfig`:
 
-# For Kind clusters, ensure registry is accessible
-kubectl get pods -n kagent -l app.kubernetes.io/name=vault-expert-agent-with-skills -o yaml | grep -A 10 initContainers
+1. **Remove these fields** - They may require a newer version of kagent or Solo Enterprise
+2. **Use enhanced system messages** - Embed detailed workflow instructions in `systemMessage` (see Part 3)
+3. The core agent functionality works without these fields
 
-# Check agent logs for skill loading errors
-kubectl logs -n kagent -l app.kubernetes.io/name=vault-expert-agent-with-skills
+The working Agent structure is:
+```yaml
+spec:
+  description: ...
+  type: Declarative
+  declarative:
+    modelConfig: default-model-config
+    systemMessage: |-
+      ...
+    tools:
+      - type: McpServer
+        mcpServer:
+          name: <mcp-server-name>
+          kind: MCPServer
 ```
 
 ### Vault Connection Issues
@@ -918,8 +526,8 @@ kubectl run vault-test --rm -it --image=curlimages/curl -- \
 
 ## Agent Comparison
 
-| Feature | Vault List Agent | Vault Expert Agent | Expert + Skills |
-|---------|------------------|-------------------|-----------------|
+| Feature | Vault List Agent | Vault Expert Agent | Expert + Enhanced Skills |
+|---------|------------------|-------------------|--------------------------|
 | List mounts | ✅ | ✅ | ✅ |
 | List secrets | ✅ | ✅ | ✅ |
 | Read secrets | ❌ | ✅ | ✅ |
@@ -927,9 +535,12 @@ kubectl run vault-test --rm -it --image=curlimages/curl -- \
 | Delete secrets | ❌ | ✅ | ✅ |
 | Create mounts | ❌ | ✅ | ✅ |
 | PKI management | ❌ | ✅ | ✅ |
-| Secret rotation | ❌ | ❌ | ✅ |
-| Policy generation | ❌ | ❌ | ✅ |
+| Secret rotation guidance | ❌ | ❌ | ✅ |
+| Policy generation help | ❌ | ❌ | ✅ |
+| A2A skill discovery | ✅ | ✅ | ✅ |
 | Use case | Audit/Discovery | Administration | Full Automation |
+
+> **Note**: "Secret rotation guidance" and "Policy generation help" are provided through enhanced system message instructions. The agent uses the same MCP tools (vault_kv_read, vault_kv_write) but follows detailed procedures embedded in its instructions.
 
 ---
 
@@ -945,7 +556,7 @@ kubectl run vault-test --rm -it --image=curlimages/curl -- \
 
 5. **Secret Rotation**: Implement regular rotation of the Vault token stored in the Kubernetes secret.
 
-6. **Skill Security**: Review all skill scripts before deploying to ensure they don't expose sensitive data.
+6. **System Message Review**: Review agent system messages before deployment to ensure rotation and policy generation instructions follow security best practices.
 
 ---
 
@@ -962,13 +573,6 @@ kubectl delete mcpserver vault-mcp-server -n kagent
 
 # Delete secret
 kubectl delete secret vault-mcp-credentials -n kagent
-
-# Remove skill images
-docker rmi localhost:5000/vault-rotation-skill:latest
-docker rmi localhost:5000/vault-policy-skill:latest
-
-# Remove skill directories
-rm -rf vault-rotation-skill vault-policy-skill
 ```
 
 ---
