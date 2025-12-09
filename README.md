@@ -105,9 +105,9 @@ metadata:
   namespace: kagent
 type: Opaque
 stringData:
-  VAULT_ADDR: "https://vault.example.com:8200"    # Replace with your Vault address
-  VAULT_NAMESPACE: "admin"                         # Replace with your namespace (or leave empty string for OSS Vault)
-  VAULT_TOKEN: "hvs.your-vault-token-here"        # Replace with your Vault token
+  VAULT_ADDR: "https://vault.example.com:8200"
+  VAULT_NAMESPACE: "admin"
+  VAULT_TOKEN: "hvs.your-vault-token-here"
 EOF
 ```
 
@@ -155,8 +155,6 @@ kubectl logs -n kagent -l app.kubernetes.io/name=vault-mcp-server
 ```
 
 ### Step 4: (Optional) Test with MCP Inspector
-
-You can use the MCP Inspector to verify the Vault MCP Server is working correctly:
 
 ```bash
 # Port-forward the MCP server
@@ -414,6 +412,7 @@ Agent:
 4. Confirms success to user
 
 ## Security Notes
+
 - Never output actual secret values to the user
 - Always confirm before performing rotation
 - Suggest updating dependent applications after rotation
@@ -526,6 +525,9 @@ docker ps | grep registry || docker run -d -p 5000:5000 --restart=always --name 
 # Build and push
 docker build -t localhost:5000/vault-rotation-skill:latest .
 docker push localhost:5000/vault-rotation-skill:latest
+
+# Go back to parent directory
+cd ..
 ```
 
 ### Step 2: Create a Vault Policy Generator Skill
@@ -574,10 +576,11 @@ The skill generates a `policy.hcl` file that can be applied to Vault.
 
 ## Output
 
-The generated policy file can be applied using:
-```
+Apply the generated policy with:
+
+\`\`\`bash
 vault policy write <policy_name> policy.hcl
-```
+\`\`\`
 EOF
 ```
 
@@ -669,7 +672,7 @@ EOF
 chmod +x scripts/generate-policy.py
 ```
 
-4. Create Dockerfile and build:
+4. Create the Dockerfile and build:
 
 ```bash
 cat > Dockerfile <<'EOF'
@@ -677,8 +680,12 @@ FROM scratch
 COPY . /
 EOF
 
+# Build and push
 docker build -t localhost:5000/vault-policy-skill:latest .
 docker push localhost:5000/vault-policy-skill:latest
+
+# Go back to parent directory
+cd ..
 ```
 
 ### Step 3: Deploy Agent with Skills
@@ -696,9 +703,8 @@ spec:
   description: A HashiCorp Vault expert agent with advanced skills for secret rotation and policy management.
   type: Declarative
   skills:
-    insecureSkipVerify: true  # Only for development/testing
+    insecureSkipVerify: true
     refs:
-      # For Kind clusters, use kind-registry:5000 instead of localhost:5000
       - kind-registry:5000/vault-rotation-skill:latest
       - kind-registry:5000/vault-policy-skill:latest
   declarative:
@@ -800,6 +806,8 @@ spec:
 EOF
 ```
 
+> **Note**: For Kind clusters, use `kind-registry:5000` instead of `localhost:5000`. For other registries (Docker Hub, GHCR, ECR), update the image references accordingly.
+
 ---
 
 ## Part 4: Testing the Agents
@@ -807,7 +815,6 @@ EOF
 ### Option 1: Using the kagent Dashboard
 
 ```bash
-# Launch the kagent dashboard
 kagent dashboard
 ```
 
@@ -825,11 +832,10 @@ kagent invoke --agent vault-list-agent --task "Show me all secret engines"
 # Test skills
 kagent invoke --agent vault-expert-agent-with-skills --task "What skills do you have?"
 kagent invoke --agent vault-expert-agent-with-skills --task "Generate a read-only policy for secret/apps/*"
+kagent invoke --agent vault-expert-agent-with-skills --task "Rotate the password at secret/myapp/database"
 ```
 
 ### Option 3: Using the A2A Protocol
-
-The agents are exposed via the A2A (Agent-to-Agent) protocol:
 
 ```bash
 # Port-forward the kagent controller
@@ -837,6 +843,9 @@ kubectl port-forward svc/kagent-controller 8083:8083 -n kagent
 
 # Get the agent card
 curl localhost:8083/api/a2a/kagent/vault-expert-agent/.well-known/agent.json | jq
+
+# Get the skilled agent card
+curl localhost:8083/api/a2a/kagent/vault-expert-agent-with-skills/.well-known/agent.json | jq
 ```
 
 ### Option 4: Using the A2A Host CLI
@@ -846,7 +855,7 @@ curl localhost:8083/api/a2a/kagent/vault-expert-agent/.well-known/agent.json | j
 git clone https://github.com/a2aproject/a2a-samples.git
 cd a2a-samples/samples/python/hosts/cli
 
-# Connect to the vault expert agent
+# Connect to the vault expert agent with skills
 uv run . --agent http://127.0.0.1:8083/api/a2a/kagent/vault-expert-agent-with-skills
 ```
 
@@ -873,7 +882,15 @@ If the agent reports it cannot find tools:
 
 1. Verify the MCP server is running and healthy
 2. Check that tool names match exactly (use MCP Inspector to discover actual tool names)
-3. Try removing the `toolNames` field to expose all tools
+3. Try removing the `toolNames` field to expose all tools:
+
+```yaml
+tools:
+  - type: McpServer
+    mcpServer:
+      name: vault-mcp-server
+      kind: MCPServer
+```
 
 ### Skills Not Loading
 
@@ -883,6 +900,9 @@ docker pull localhost:5000/vault-rotation-skill:latest
 
 # For Kind clusters, ensure registry is accessible
 kubectl get pods -n kagent -l app.kubernetes.io/name=vault-expert-agent-with-skills -o yaml | grep -A 10 initContainers
+
+# Check agent logs for skill loading errors
+kubectl logs -n kagent -l app.kubernetes.io/name=vault-expert-agent-with-skills
 ```
 
 ### Vault Connection Issues
