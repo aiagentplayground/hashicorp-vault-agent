@@ -1,0 +1,11 @@
+apiVersion: kagent.dev/v1alpha2
+kind: RemoteMCPServer
+metadata:
+  name: vault-mcp-remote
+  namespace: kagent
+spec:
+  description: HashiCorp Vault MCP Server - Manage secrets, mounts, and PKI certificates in Vault
+  url: http://vault-mcp-server.kagent.svc.cluster.local:8084/mcp
+  protocol: STREAMABLE_HTTP
+  timeout: 30s
+  terminateOnClose: false

@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault-mcp-server
+  namespace: kagent
+  labels:
+    app: vault-mcp-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vault-mcp-server
+  template:
+    metadata:
+      labels:
+        app: vault-mcp-server
+    spec:
+      containers:
+      - name: vault-mcp
+        image: sebbycorp/vault-mcp-server:latest
+        ports:
+        - containerPort: 8084
+          name: http
+          protocol: TCP
+        env:
+        - name: VAULT_ADDR
+          valueFrom:
+            secretKeyRef:
+              name: vault-credentials
+              key: VAULT_ADDR
+        - name: VAULT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: vault-credentials
+              key: VAULT_TOKEN
+        - name: VAULT_SKIP_VERIFY
+          value: "true"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          tcpSocket:
+            port: 8084
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          tcpSocket:
+            port: 8084
+          initialDelaySeconds: 5
+          periodSeconds: 10
